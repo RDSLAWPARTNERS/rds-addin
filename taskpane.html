@@ -125,26 +125,84 @@
       }
     }
 
+    function buildSignatureHTML(name, title, email, phone) {
+      return `<div id="rds-sig-block" style="font-family:Arial,sans-serif;font-size:13px;color:#333;margin:0;padding:0;">
+        <p style="margin:0 0 10px 0;">Warm regards,</p>
+        ${name  ? `<p style="margin:0 0 2px 0;"><strong>${name}</strong></p>` : ""}
+        ${title ? `<p style="margin:0 0 2px 0;"><strong>${title}</strong></p>` : ""}
+        ${email ? `<p style="margin:0 0 2px 0;">E: <a href="mailto:${email}" style="color:#1155CC;text-decoration:none;">${email}</a></p>` : ""}
+        ${phone && phone !== "—" ? `<p style="margin:0 0 10px 0;">T: ${phone}</p>` : ""}
+        <img src="https://rdslawpartners.github.io/rds-addin/signature.png" width="750" alt="RDS" style="display:block;border:0;max-width:100%;margin-top:10px;">
+        <p style="font-family:Arial,sans-serif;font-size:9px;color:#555;line-height:1.55;margin:8px 0 0 0;padding-top:7px;border-top:1px solid #ccc;max-width:750px;">
+        <strong>ROSLI DAHLAN SARAVANA PARTNERSHIP DISCLAIMER:</strong><br>
+        This email and any files transmitted with it are intended strictly and solely for the use of the addressee and may contain private, confidential and/or privileged information. This email is intended for information purposes only and does not constitute a commitment by the Firm except where provided for in written agreement between you and the Firm. If you are not the addressee, you are hereby notified that any review, disclosure, retransmission, dissemination, distribution, printing, copying or use of this email or any part is strictly prohibited and you should delete this email immediately and notify the sender. Any opinions, views, conclusions and other information in this email that do not relate to the official business of the Firm shall be understood as neither given or endorsed by the Firm. The Firm accepts no liability for any errors or omissions in the contents of this email and message or any damage resulting from virus or other detrimental components which arises as a result of this email transmission.
+        </p></div>`;
+    }
+
     async function manualInsert() {
       const btn    = document.getElementById("insertBtn");
       const status = document.getElementById("status");
 
-      btn.disabled   = true;
+      btn.disabled    = true;
       btn.textContent = "Inserting...";
       status.innerHTML = '<span class="info">Please wait...</span>';
 
       try {
-        // Trigger the function file logic via Office API
+        // Get user profile
+        let name = "", title = "", email = "", phone = "";
+        try {
+          const token = await new Promise((resolve, reject) => {
+            Office.context.auth.getAccessTokenAsync(
+              { allowSignInPrompt: true },
+              r => r.status === Office.AsyncResultStatus.Succeeded ? resolve(r.value) : reject(r.error)
+            );
+          });
+          const res  = await fetch(
+            "https://graph.microsoft.com/v1.0/me?$select=displayName,jobTitle,mail,mobilePhone,businessPhones",
+            { headers: { Authorization: "Bearer " + token } }
+          );
+          const data = await res.json();
+          name  = data.displayName || "";
+          title = data.jobTitle    || "";
+          email = data.mail        || "";
+          phone = data.mobilePhone || (data.businessPhones && data.businessPhones[0]) || "";
+        } catch(e) {
+          const user = Office.context.mailbox.userProfile;
+          name  = user.displayName  || "";
+          email = user.emailAddress || "";
+        }
+
+        const sigHTML = buildSignatureHTML(name, title, email, phone);
+
         await new Promise((resolve, reject) => {
           Office.context.mailbox.item.body.getAsync(
             Office.CoercionType.Html,
-            result => result.status === Office.AsyncResultStatus.Succeeded
-              ? resolve() : reject(result.error)
+            result => {
+              if (result.status !== Office.AsyncResultStatus.Succeeded) { reject(result.error); return; }
+              let body = result.value || "";
+              body = body.replace(/<div id="rds-sig-block"[\s\S]*?<\/div>/gi, "");
+              const quotePatterns = [
+                /(<div\s[^>]*class="[^"]*gmail_quote[^"]*")/i,
+                /(<blockquote\s[^>]*type="cite")/i,
+                /(<div\s[^>]*id="divRplyFwdMsg")/i,
+                /(<hr\s[^>]*id="stopSpelling")/i
+              ];
+              let quoteIndex = -1;
+              for (const p of quotePatterns) {
+                const m = p.exec(body);
+                if (m && (quoteIndex === -1 || m.index < quoteIndex)) quoteIndex = m.index;
+              }
+              const newBody = quoteIndex !== -1
+                ? body.slice(0, quoteIndex) + "<br>" + sigHTML + "<br>" + body.slice(quoteIndex)
+                : body + "<br>" + sigHTML;
+              Office.context.mailbox.item.body.setAsync(
+                newBody, { coercionType: Office.CoercionType.Html },
+                r => r.status === Office.AsyncResultStatus.Succeeded ? resolve() : reject(r.error)
+              );
+            }
           );
         });
 
-        // Call insertSignature from function.html via Office commands
-        Office.addin.showAsTaskpane();
         status.innerHTML = '<span class="ok">✓ Signature inserted successfully.</span>';
       } catch(e) {
         status.innerHTML = `<span class="err">Error: ${e.message || e}</span>`;
