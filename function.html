@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script>
+
+    // ─────────────────────────────────────────────────
+    //  CONFIGURATION — update these values
+    // ─────────────────────────────────────────────────
+    const CONFIG = {
+      signatureImageUrl: "https://www.rdslawpartners.com/rds-addin/signature.png",
+      signatureImageWidth: 750,
+      companyName: "Rosli Dahlan Saravana Partnership",
+      disclaimer: `<p style="font-family:Arial,sans-serif;font-size:9px;color:#555555;
+        line-height:1.55;margin:8px 0 0 0;padding-top:7px;border-top:1px solid #cccccc;
+        max-width:750px;">
+        <strong>ROSLI DAHLAN SARAVANA PARTNERSHIP DISCLAIMER:</strong><br>
+        This email and any files transmitted with it are intended strictly and solely for
+        the use of the addressee and may contain private, confidential and/or privileged
+        information. This email is intended for information purposes only and does not
+        constitute a commitment by the Firm except where provided for in written agreement
+        between you and the Firm. If you are not the addressee, you are hereby notified
+        that any review, disclosure, retransmission, dissemination, distribution, printing,
+        copying or use of this email or any part is strictly prohibited and you should
+        delete this email immediately and notify the sender. Any opinions, views, conclusions
+        and other information in this email that do not relate to the official business of
+        the Firm shall be understood as neither given or endorsed by the Firm. The Firm
+        accepts no liability for any errors or omissions in the contents of this email and
+        message or any damage resulting from virus or other detrimental components which
+        arises as a result of this email transmission.
+        </p>`
+    };
+
+    // ─────────────────────────────────────────────────
+    //  Build the signature HTML block
+    // ─────────────────────────────────────────────────
+    function buildSignatureHTML(profile) {
+      const { name, title, email, phone } = profile;
+      return `
+        <div id="rds-sig-block" style="font-family:Arial,sans-serif;font-size:13px;
+          color:#333333;margin:0;padding:0;">
+          <p style="margin:0 0 10px 0;">Warm regards,</p>
+          ${name  ? `<p style="margin:0 0 2px 0;"><strong>${name}</strong></p>` : ""}
+          ${title ? `<p style="margin:0 0 2px 0;"><strong>${title}</strong></p>` : ""}
+          ${email ? `<p style="margin:0 0 2px 0;">E: <a href="mailto:${email}"
+                      style="color:#1155CC;text-decoration:none;">${email}</a></p>` : ""}
+          ${phone ? `<p style="margin:0 0 10px 0;">T: ${phone}</p>` : ""}
+          <img src="${CONFIG.signatureImageUrl}"
+               width="${CONFIG.signatureImageWidth}"
+               alt="${CONFIG.companyName}"
+               style="display:block;border:0;max-width:100%;margin-top:10px;">
+          ${CONFIG.disclaimer}
+        </div>`;
+    }
+
+    // ─────────────────────────────────────────────────
+    //  Get user profile from Microsoft Graph API
+    // ─────────────────────────────────────────────────
+    async function getUserProfile() {
+      try {
+        // Get SSO token
+        const token = await new Promise((resolve, reject) => {
+          Office.context.auth.getAccessTokenAsync(
+            { allowSignInPrompt: true, allowConsentPrompt: true },
+            result => {
+              if (result.status === Office.AsyncResultStatus.Succeeded) {
+                resolve(result.value);
+              } else {
+                reject(result.error);
+              }
+            }
+          );
+        });
+
+        // Call Microsoft Graph
+        const res = await fetch(
+          "https://graph.microsoft.com/v1.0/me?$select=displayName,jobTitle,mail,mobilePhone,businessPhones",
+          { headers: { Authorization: "Bearer " + token } }
+        );
+
+        if (!res.ok) throw new Error("Graph API error: " + res.status);
+        const data = await res.json();
+
+        return {
+          name:  data.displayName   || "",
+          title: data.jobTitle      || "",
+          email: data.mail          || "",
+          phone: data.mobilePhone   || (data.businessPhones && data.businessPhones[0]) || ""
+        };
+
+      } catch (err) {
+        // Fallback to basic Office identity if Graph fails
+        console.warn("Graph API failed, using Office identity fallback:", err);
+        const user = Office.context.mailbox.userProfile;
+        return {
+          name:  user.displayName  || "",
+          title: "",
+          email: user.emailAddress || "",
+          phone: ""
+        };
+      }
+    }
+
+    // ─────────────────────────────────────────────────
+    //  Smart insert — places signature ABOVE quoted
+    //  reply history, not at the very bottom
+    // ─────────────────────────────────────────────────
+    async function applySignature() {
+      const profile  = await getUserProfile();
+      const sigBlock = buildSignatureHTML(profile);
+
+      return new Promise((resolve) => {
+        Office.context.mailbox.item.body.getAsync(
+          Office.CoercionType.Html,
+          async (result) => {
+            if (result.status !== Office.AsyncResultStatus.Succeeded) {
+              resolve(); return;
+            }
+
+            let body = result.value || "";
+
+            // Remove any existing RDS signature to prevent duplicates
+            body = body.replace(
+              /<div id="rds-sig-block"[\s\S]*?<\/div>\s*(<p[\s\S]*?<\/p>\s*)?/gi,
+              ""
+            );
+
+            // Detect reply/forward quoted content markers
+            const quotePatterns = [
+              /(<div\s[^>]*class="[^"]*gmail_quote[^"]*")/i,
+              /(<blockquote\s[^>]*type="cite")/i,
+              /(<div\s[^>]*id="divRplyFwdMsg")/i,
+              /(<hr\s[^>]*id="stopSpelling")/i,
+              /(<div\s[^>]*class="[^"]*OutlookMessageHeader[^"]*")/i,
+              /(-----\s*Original Message\s*-----)/i,
+              /(<div\s[^>]*class="[^"]*yahoo_quoted[^"]*")/i
+            ];
+
+            let quoteIndex = -1;
+            for (const pattern of quotePatterns) {
+              const match = pattern.exec(body);
+              if (match && (quoteIndex === -1 || match.index < quoteIndex)) {
+                quoteIndex = match.index;
+              }
+            }
+
+            let newBody;
+            if (quoteIndex !== -1) {
+              // Reply: insert signature ABOVE the quoted block
+              newBody =
+                body.slice(0, quoteIndex) +
+                "<br>" + sigBlock + "<br>" +
+                body.slice(quoteIndex);
+            } else {
+              // New message: append at end
+              newBody = body + "<br>" + sigBlock;
+            }
+
+            Office.context.mailbox.item.body.setAsync(
+              newBody,
+              { coercionType: Office.CoercionType.Html },
+              () => resolve()
+            );
+          }
+        );
+      });
+    }
+
+    // ─────────────────────────────────────────────────
+    //  Event handlers registered in manifest
+    // ─────────────────────────────────────────────────
+    function insertSignature(event) {
+      applySignature().finally(() => event.completed());
+    }
+
+    function onNewMessage(event) {
+      applySignature().finally(() => event.completed());
+    }
+
+    function onReply(event) {
+      applySignature().finally(() => event.completed());
+    }
+
+    // Required by Office JS
+    Office.initialize = function() {};
+
+  </script>
+</head>
+<body></body>
+</html>
