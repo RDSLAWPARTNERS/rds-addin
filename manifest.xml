@@ -6,7 +6,7 @@
            xsi:type="MailApp">
 
   <Id>990f35ac-6e22-44a2-910f-c6b229cc2eea</Id>
-  <Version>1.0.0.2</Version>
+  <Version>1.0.0.3</Version>
   <ProviderName>Rosli Dahlan Saravana Partnership</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="RDS Email Signature"/>
@@ -45,7 +45,6 @@
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
   </Rule>
 
-  <!-- VersionOverrides V1_0 — ribbon button only -->
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides"
                     xsi:type="VersionOverridesV1_0">
     <Requirements>
@@ -82,7 +81,6 @@
         </DesktopFormFactor>
       </Host>
     </Hosts>
-
     <Resources>
       <bt:Images>
         <bt:Image id="Icon.16x16" DefaultValue="https://rdslawpartners.github.io/rds-addin/icon-16.png"/>
@@ -101,73 +99,6 @@
         <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Insert the RDS firm email signature"/>
       </bt:LongStrings>
     </Resources>
-
-    <!-- VersionOverrides V1_1 nested inside V1_0 — required for Events -->
-    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1"
-                      xsi:type="VersionOverridesV1_1">
-      <Requirements>
-        <bt:Sets>
-          <bt:Set Name="Mailbox" MinVersion="1.10"/>
-        </bt:Sets>
-      </Requirements>
-      <Hosts>
-        <Host xsi:type="MailHost">
-          <DesktopFormFactor>
-            <FunctionFile resid="FunctionFile.Url"/>
-            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
-              <OfficeTab id="TabDefault">
-                <Group id="msgComposeGroup2">
-                  <Label resid="GroupLabel"/>
-                  <Control xsi:type="Button" id="insertSigBtn2">
-                    <Label resid="TaskpaneButton.Label"/>
-                    <Supertip>
-                      <Title resid="TaskpaneButton.Label"/>
-                      <Description resid="TaskpaneButton.Tooltip"/>
-                    </Supertip>
-                    <Icon>
-                      <bt:Image size="16" resid="Icon.16x16"/>
-                      <bt:Image size="32" resid="Icon.32x32"/>
-                      <bt:Image size="80" resid="Icon.80x80"/>
-                    </Icon>
-                    <Action xsi:type="ExecuteFunction">
-                      <FunctionName>insertSignature</FunctionName>
-                    </Action>
-                  </Control>
-                </Group>
-              </OfficeTab>
-            </ExtensionPoint>
-            <!-- Auto-trigger events — requires V1_1 -->
-            <ExtensionPoint xsi:type="Events">
-              <Event Type="OnNewMessageCompose"
-                     FunctionExecution="synchronous"
-                     FunctionName="onNewMessage"/>
-              <Event Type="OnMessageReply"
-                     FunctionExecution="synchronous"
-                     FunctionName="onReply"/>
-            </ExtensionPoint>
-          </DesktopFormFactor>
-        </Host>
-      </Hosts>
-      <Resources>
-        <bt:Images>
-          <bt:Image id="Icon.16x16" DefaultValue="https://rdslawpartners.github.io/rds-addin/icon-16.png"/>
-          <bt:Image id="Icon.32x32" DefaultValue="https://rdslawpartners.github.io/rds-addin/icon-32.png"/>
-          <bt:Image id="Icon.80x80" DefaultValue="https://rdslawpartners.github.io/rds-addin/icon-80.png"/>
-        </bt:Images>
-        <bt:Urls>
-          <bt:Url id="FunctionFile.Url" DefaultValue="https://rdslawpartners.github.io/rds-addin/function.html"/>
-          <bt:Url id="Taskpane.Url"     DefaultValue="https://rdslawpartners.github.io/rds-addin/taskpane.html"/>
-        </bt:Urls>
-        <bt:ShortStrings>
-          <bt:String id="GroupLabel"           DefaultValue="RDS Signature"/>
-          <bt:String id="TaskpaneButton.Label" DefaultValue="RDS Signature"/>
-        </bt:ShortStrings>
-        <bt:LongStrings>
-          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Insert the RDS firm email signature"/>
-        </bt:LongStrings>
-      </Resources>
-    </VersionOverrides>
-
   </VersionOverrides>
 
 </OfficeApp>
